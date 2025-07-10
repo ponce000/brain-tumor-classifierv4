@@ -3,13 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>脳腫瘍鑑別診断システム</title>
+    <title>放射線科読影用 脳腫瘍鑑別システム</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+        .disease-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        .disease-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        .section-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 8px 0 4px 0;
+        }
+        .highlight { background: #fef3c7; padding: 2px 4px; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -18,52 +35,334 @@
     <script type="text/babel">
         const { useState, useEffect } = React;
 
-        const BrainTumorClassifier = () => {
+        const RadiologyTumorSystem = () => {
             const [selectedCriteria, setSelectedCriteria] = useState({});
             const [results, setResults] = useState([]);
             const [expandedSections, setExpandedSections] = useState({});
+            const [selectedDisease, setSelectedDisease] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
 
-            // 脳腫瘍分類データ
-            const classificationData = {
+            // 詳細な脳腫瘍データベース（Radiopedia + 臨床データ）
+            const tumorDatabase = {
+                // 神経上皮腫瘍
+                'glioblastoma': {
+                    name: '膠芽腫 (Glioblastoma)',
+                    whoGrade: 'WHO Grade 4',
+                    agePreference: '成人（50-70歳）',
+                    location: '大脳半球（前頭・側頭葉多い）',
+                    basics: [
+                        'WHO CNS5でIDH-wildtype glioblastomaとIDH-mutant astrocytoma grade 4に分類',
+                        '最も悪性度の高い原発性脳腫瘍、中央生存期間15ヶ月',
+                        '男性に多い（M:F = 1.6:1）、白人に多い',
+                        '分子診断：IDH変異、MGMT promoter methylation、1p/19q co-deletionが重要'
+                    ],
+                    imaging: [
+                        'T1WI：不均一な低信号、壊死部は著明低信号',
+                        'T2/FLAIR：不均一高信号、周囲浮腫顕著',
+                        '造影：不規則なリング状強化、造影されない壊死中心部',
+                        'DWI：壊死部は高ADC、viable tumorは低～等ADC',
+                        'SWI：出血は約20%、微小出血多数',
+                        'MRS：Cho/Cr比上昇、NAA低下、lactate/lipid peaks'
+                    ],
+                    differentials: ['転移性腫瘍', '原発性CNSリンパ腫', '膿瘍'],
+                    prognosis: '極めて不良、中央生存期間15ヶ月',
+                    keywords: ['リング状造影', '壊死', '浮腫', '不規則', 'IDH wildtype']
+                },
+
+                'pilocytic_astrocytoma': {
+                    name: '毛様細胞性星細胞腫 (Pilocytic Astrocytoma)',
+                    whoGrade: 'WHO Grade 1',
+                    agePreference: '小児（5-20歳）',
+                    location: '小脳、視神経、視床下部',
+                    basics: [
+                        'WHO CNS5で最も一般的な小児脳腫瘍',
+                        '良性、外科的全摘で治癒可能',
+                        'BRAF遺伝子異常（fusion或いはV600E変異）が多数',
+                        'NF1関連例は視神経に好発'
+                    ],
+                    imaging: [
+                        'T1WI：嚢胞は低信号、結節は等～低信号',
+                        'T2WI：嚢胞は高信号、結節は高～等信号',
+                        '造影：壁在結節の著明な造影効果（特徴的）',
+                        'DWI：結節部は軽度拡散制限、嚢胞部は制限なし',
+                        '嚢胞＋壁在結節パターンが90%で典型的',
+                        '周囲浮腫は軽微、出血・石灰化は稀'
+                    ],
+                    differentials: ['血管芽腫', '嚢胞性転移', 'PLAGL1-NET'],
+                    prognosis: '良好、10年生存率90%以上',
+                    keywords: ['嚢胞性', '壁在結節', '著明造影', '小児', 'BRAF']
+                },
+
+                'medulloepithelioma': {
+                    name: '髄上皮腫 (Medulloepithelioma)',
+                    whoGrade: 'WHO Grade 4',
+                    agePreference: '乳幼児（1-5歳）',
+                    location: '脳室周囲（主に側脳室）',
+                    basics: [
+                        'WHO CNS5で胎児性腫瘍に分類される稀な悪性腫瘍',
+                        '神経管の未分化上皮に類似した組織像',
+                        'C19MC増幅が特徴的（ETMRと異なる点）',
+                        '脳室播種のリスク高い'
+                    ],
+                    imaging: [
+                        'T1WI：不均一な等～低信号',
+                        'T2WI：不均一高信号、嚢胞性変化多い',
+                        '造影：不均一な造影効果',
+                        'DWI：強い拡散制限（ETMRと類似）',
+                        '脳室内突出する分葉状腫瘤',
+                        '水頭症併発頻度高い'
+                    ],
+                    differentials: ['ETMR', '脈絡叢癌', 'AT/RT'],
+                    prognosis: '不良、5年生存率30%未満',
+                    keywords: ['脳室内', '分葉状', '強い拡散制限', '乳幼児', 'C19MC']
+                },
+
+                'plagl1_net': {
+                    name: 'PLAGL1融合陽性神経上皮腫瘍 (PLAGL1-NET)',
+                    whoGrade: 'WHO Grade 2-3',
+                    agePreference: '小児（中央値6歳、0.5-15歳）',
+                    location: '大脳半球皮質下（全例）',
+                    basics: [
+                        'WHO CNS5で新設された希少小児脳腫瘍',
+                        'EWSR1-PLAGL1やPLAGL1-FUSなど多様なPLAGL1融合',
+                        '特有のメチレーションクラスを形成',
+                        '単調な小型〜中型細胞のシート状増殖＋偽ロゼット',
+                        'EMA dot-like陽性、GFAP±、OLIG2陰性'
+                    ],
+                    imaging: [
+                        'T2WI：高～等信号の嚢胞性＋壁在結節型が典型',
+                        'T1造影：壁はリング状～不均一増強',
+                        '低T2域は石灰化・陳旧性血腫（SWI/CTで確認）',
+                        'DWI：拡散低下は弱いか不明瞭（ETMRより軽度）',
+                        '周囲浮腫は軽度～中等度',
+                        'MRA/4D-MRAで内部血管描出報告あり'
+                    ],
+                    differentials: ['上衣腫', '毛様細胞性星細胞腫', 'ETMR'],
+                    prognosis: '小児上衣腫より良好、PFS中央値約35ヶ月',
+                    keywords: ['嚢胞性', '皮質下', '小児', 'PLAGL1融合', '血管豊富']
+                },
+
+                'ependymoma': {
+                    name: '上衣腫 (Ependymoma)',
+                    whoGrade: 'WHO Grade 2-3',
+                    agePreference: '小児：後頭蓋窩、成人：脊髄',
+                    location: '脳室系（第4脳室、側脳室）',
+                    basics: [
+                        'WHO CNS5で分子分類：posterior fossa A/B、supratentorial ZFTA融合等',
+                        'Group A：乳幼児、予後不良',
+                        'Group B：学童期、予後良好',
+                        '全摘除が最も重要な予後因子'
+                    ],
+                    imaging: [
+                        'T1WI：等～低信号、嚢胞性変化多い',
+                        'T2WI：不均一高信号',
+                        '造影：不均一造影、一部非造影域',
+                        'DWI：拡散制限は軽度～中等度',
+                        '第4脳室底から発生し、Luschka孔・Magendie孔から突出',
+                        '石灰化30%、出血20%'
+                    ],
+                    differentials: ['髄芽腫', 'PLAGL1-NET', '脈絡叢腫瘍'],
+                    prognosis: '分子型により大きく異なる',
+                    keywords: ['脳室系', '分子分類', 'Luschka孔突出', '全摘重要']
+                },
+
+                'medulloblastoma': {
+                    name: '髄芽腫 (Medulloblastoma)',
+                    whoGrade: 'WHO Grade 4',
+                    agePreference: '小児（3-8歳がピーク）',
+                    location: '小脳虫部（小児）、小脳半球（成人）',
+                    basics: [
+                        'WHO CNS5分子分類：WNT、SHH、Group 3、Group 4',
+                        '最も頻度の高い小児悪性脳腫瘍',
+                        '播種性の高い腫瘍（診断時30%で播種）',
+                        'WNT型が最も予後良好'
+                    ],
+                    imaging: [
+                        'T1WI：等～低信号、均一性高い',
+                        'T2WI：低～等信号（hypercellularのため）',
+                        '造影：均一～軽度不均一造影',
+                        'DWI：強い拡散制限（ADC ~550×10⁻⁶mm²/s）',
+                        '小脳虫部の境界明瞭な腫瘤',
+                        '水頭症併発多い、播種検索必要'
+                    ],
+                    differentials: ['上衣腫', '毛様細胞性星細胞腫', 'AT/RT'],
+                    prognosis: '分子型により異なる、全体で5年生存率70%',
+                    keywords: ['小脳虫部', '強い拡散制限', '播種', '分子分類', 'hypercellular']
+                },
+
+                'atrt': {
+                    name: '非定型奇形腫様/横紋筋肉腫様腫瘍 (AT/RT)',
+                    whoGrade: 'WHO Grade 4',
+                    agePreference: '乳幼児（中央値2歳未満）',
+                    location: '後頭蓋窩、大脳半球、脊髄',
+                    basics: [
+                        'WHO CNS5で胎児性腫瘍、SMARCB1/SMARCA4欠失',
+                        '極めて予後不良な乳幼児腫瘍',
+                        '3つの分子亜型：SHH、TYR、MYC',
+                        '多様な組織像（上皮様、間葉系、神経系）'
+                    ],
+                    imaging: [
+                        'T1WI：不均一な等～低信号',
+                        'T2WI：不均一高信号',
+                        '造影：不均一造影、壊死多い',
+                        'DWI：強い拡散制限',
+                        '不規則な形状、出血・壊死多い',
+                        '播種頻度高い'
+                    ],
+                    differentials: ['髄芽腫', 'ETMR', '上衣腫'],
+                    prognosis: '極めて不良、5年生存率50%未満',
+                    keywords: ['乳幼児', 'SMARCB1欠失', '強い拡散制限', '不規則', '播種']
+                },
+
+                // 髄膜腫
+                'meningioma': {
+                    name: '髄膜腫 (Meningioma)',
+                    whoGrade: 'WHO Grade 1-3',
+                    agePreference: '中年女性（40-60歳）',
+                    location: '傍矢状洞、蝶形骨縁、parasella',
+                    basics: [
+                        'WHO CNS5で15のsubtypeに分類',
+                        '女性に多い（F:M = 2:1）、妊娠・エストロゲンで増大',
+                        '多発例はNF2関連',
+                        'Grade 1が90%、Grade 2が7%、Grade 3が1%'
+                    ],
+                    imaging: [
+                        'T1WI：等信号、均一性高い',
+                        'T2WI：等～やや高信号',
+                        '造影：均一で著明な造影効果',
+                        'DWI：軽度拡散制限',
+                        'dural tail sign（硬膜尾徴候）',
+                        '石灰化・骨化多い、CSF cleft',
+                        'hyperostosis（骨硬化）'
+                    ],
+                    differentials: ['転移', '血管芽腫', '孤発性線維性腫瘍'],
+                    prognosis: 'Grade 1は良好、Grade 2-3は再発率高い',
+                    keywords: ['硬膜付着', '均一造影', 'dural tail', '石灰化', '女性']
+                },
+
+                // 転移性腫瘍
+                'brain_metastases': {
+                    name: '脳転移 (Brain Metastases)',
+                    whoGrade: '原発巣による',
+                    agePreference: '成人（50-70歳）',
+                    location: '皮質髄質境界、血流豊富部位',
+                    basics: [
+                        '最も頻度の高い脳腫瘍（原発性の10倍）',
+                        '原発巣：肺癌50%、乳癌15%、腎癌10%、大腸癌5%',
+                        '多発性が特徴（70-80%）',
+                        '血液脳関門破綻による造影効果'
+                    ],
+                    imaging: [
+                        'T1WI：等～低信号、多発性',
+                        'T2WI：不均一高信号',
+                        '造影：リング状～結節状造影',
+                        'DWI：中心部は高ADC（壊死）',
+                        '皮質髄質境界に好発',
+                        '著明な周囲浮腫',
+                        '出血性：腎癌、甲状腺癌、絨毛癌、悪性黒色腫'
+                    ],
+                    differentials: ['多発性膠芽腫', '膿瘍', '多発性硬化症'],
+                    prognosis: '原発巣・個数・全身状態により異なる',
+                    keywords: ['多発性', '皮質髄質境界', '著明浮腫', '既往歴', '出血性']
+                },
+
+                // リンパ腫
+                'pcnsl': {
+                    name: '原発性中枢神経系リンパ腫 (PCNSL)',
+                    whoGrade: '高悪性度',
+                    agePreference: '高齢者（60-70歳）、免疫不全者',
+                    location: '深部白質、基底核、脳室周囲',
+                    basics: [
+                        'びまん性大細胞型B細胞リンパ腫が95%',
+                        '免疫不全関連（HIV、移植後）',
+                        'EBV関連が多い',
+                        'ステロイド反応性（ゴースト効果）'
+                    ],
+                    imaging: [
+                        'T1WI：等～低信号',
+                        'T2WI：等～やや高信号',
+                        '造影：均一で著明な造影効果',
+                        'DWI：強い拡散制限（hypercellular）',
+                        '深部構造に好発',
+                        '周囲浮腫は軽度',
+                        'CSF播種多い'
+                    ],
+                    differentials: ['膠芽腫', '転移', '脱髄性疾患'],
+                    prognosis: 'HD-MTX治療で改善、5年生存率30-50%',
+                    keywords: ['深部', '均一造影', '強い拡散制限', 'ステロイド反応', '高齢者']
+                }
+            };
+
+            // 分類基準（Radiopediaベース）
+            const classificationCriteria = {
                 age: {
-                    name: '年齢分類',
+                    name: '年齢',
+                    icon: '👶',
                     options: [
-                        { value: 'infant', label: '新生児・乳児 (0-2歳)', tumors: ['髄芽腫', '毛様細胞性星細胞腫', '非定型奇形腫様腫瘍'] },
-                        { value: 'child', label: '小児 (3-17歳)', tumors: ['髄芽腫', '毛様細胞性星細胞腫', '脳幹膠芽腫', '上衣腫'] },
-                        { value: 'adult', label: '成人 (18-65歳)', tumors: ['膠芽腫', '髄膜腫', '転移性腫瘍', '下垂体腺腫'] },
-                        { value: 'elderly', label: '高齢者 (65歳以上)', tumors: ['膠芽腫', '転移性腫瘍', '原発性CNSリンパ腫', '髄膜腫'] }
+                        { value: 'infant', label: '乳幼児 (0-3歳)', tumors: ['AT/RT', 'medulloepithelioma', 'choroid_plexus_papilloma'] },
+                        { value: 'child', label: '小児 (4-17歳)', tumors: ['medulloblastoma', 'pilocytic_astrocytoma', 'ependymoma', 'plagl1_net'] },
+                        { value: 'adult', label: '成人 (18-65歳)', tumors: ['glioblastoma', 'meningioma', 'brain_metastases'] },
+                        { value: 'elderly', label: '高齢者 (65歳以上)', tumors: ['glioblastoma', 'brain_metastases', 'pcnsl'] }
                     ]
                 },
                 location: {
-                    name: '解剖学的部位',
+                    name: '部位',
+                    icon: '🧠',
                     options: [
-                        { value: 'frontal', label: '前頭葉', tumors: ['膠芽腫', '乏突起膠腫', '転移性腫瘍'] },
-                        { value: 'temporal', label: '側頭葉', tumors: ['膠芽腫', '乏突起膠腫', '転移性腫瘍'] },
-                        { value: 'parietal', label: '頭頂葉', tumors: ['膠芽腫', '転移性腫瘍', '髄膜腫'] },
-                        { value: 'brainstem', label: '脳幹', tumors: ['脳幹膠芽腫', '血管芽腫'] },
-                        { value: 'cerebellum', label: '小脳', tumors: ['血管芽腫', '転移性腫瘍', '髄芽腫'] },
-                        { value: 'intraventricular', label: '脳室内', tumors: ['上衣腫', '中枢性神経細胞腫', '脈絡叢乳頭腫'] },
-                        { value: 'posterior_fossa', label: '後頭蓋窩', tumors: ['聴神経腫', '髄膜腫', '類上皮嚢胞'] },
-                        { value: 'sellar', label: '鞍上部・鞍内', tumors: ['下垂体腺腫', '頭蓋咽頭腫', 'ラトケ嚢胞'] }
+                        { value: 'frontal', label: '前頭葉', tumors: ['glioblastoma', 'brain_metastases', 'meningioma'] },
+                        { value: 'temporal', label: '側頭葉', tumors: ['glioblastoma', 'brain_metastases'] },
+                        { value: 'parietal', label: '頭頂葉', tumors: ['glioblastoma', 'brain_metastases', 'meningioma'] },
+                        { value: 'occipital', label: '後頭葉', tumors: ['brain_metastases', 'glioblastoma'] },
+                        { value: 'cerebellum', label: '小脳', tumors: ['pilocytic_astrocytoma', 'medulloblastoma', 'brain_metastases'] },
+                        { value: 'brainstem', label: '脳幹', tumors: ['brainstem_glioma', 'cavernoma'] },
+                        { value: 'intraventricular', label: '脳室内', tumors: ['ependymoma', 'medulloepithelioma', 'choroid_plexus_tumor'] },
+                        { value: 'subcortical', label: '皮質下白質', tumors: ['plagl1_net', 'brain_metastases', 'glioblastoma'] },
+                        { value: 'deep', label: '深部構造', tumors: ['pcnsl', 'glioblastoma'] },
+                        { value: 'dural', label: '硬膜付着', tumors: ['meningioma', 'dural_metastases'] }
                     ]
                 },
-                imaging: {
-                    name: '画像所見',
+                enhancement: {
+                    name: '造影パターン',
+                    icon: '💉',
                     options: [
-                        { value: 'uniform_enhancement', label: '均一造影', tumors: ['髄膜腫', '神経鞘腫', '下垂体腺腫'] },
-                        { value: 'ring_enhancement', label: 'リング状造影', tumors: ['膠芽腫', '転移性腫瘍'] },
-                        { value: 'restricted_diffusion', label: '拡散制限あり', tumors: ['髄芽腫', '原発性CNSリンパ腫'] },
-                        { value: 'hemorrhage', label: '出血あり', tumors: ['転移性腫瘍（腎癌、悪性黒色腫）', '膠芽腫'] },
-                        { value: 'calcification', label: '石灰化あり', tumors: ['乏突起膠腫', '髄膜腫', '頭蓋咽頭腫'] }
+                        { value: 'homogeneous', label: '均一造影', tumors: ['meningioma', 'pcnsl', 'pilocytic_astrocytoma'] },
+                        { value: 'heterogeneous', label: '不均一造影', tumors: ['glioblastoma', 'brain_metastases', 'ependymoma'] },
+                        { value: 'ring', label: 'リング状造影', tumors: ['glioblastoma', 'brain_metastases', 'plagl1_net'] },
+                        { value: 'nodular', label: '結節状造影', tumors: ['pilocytic_astrocytoma', 'brain_metastases'] },
+                        { value: 'minimal', label: '造影効果軽微', tumors: ['low_grade_glioma', 'epidermoid'] }
                     ]
                 },
-                symptoms: {
-                    name: '臨床症状',
+                diffusion: {
+                    name: 'DWI所見',
+                    icon: '🌊',
                     options: [
-                        { value: 'increased_icp', label: '頭蓋内圧亢進症状', tumors: ['水頭症を伴う腫瘍', '大きな腫瘍'] },
-                        { value: 'seizure', label: '痙攣', tumors: ['大脳皮質の腫瘍', '膠芽腫'] },
-                        { value: 'endocrine', label: '内分泌症状', tumors: ['下垂体腺腫', '頭蓋咽頭腫'] },
-                        { value: 'asymptomatic', label: '無症状', tumors: ['髄膜腫', '小さな腫瘍'] }
+                        { value: 'restricted_strong', label: '強い拡散制限', tumors: ['medulloblastoma', 'pcnsl', 'at/rt'] },
+                        { value: 'restricted_mild', label: '軽度拡散制限', tumors: ['meningioma', 'ependymoma'] },
+                        { value: 'no_restriction', label: '拡散制限なし', tumors: ['pilocytic_astrocytoma', 'brain_metastases'] },
+                        { value: 'mixed', label: '混在パターン', tumors: ['glioblastoma', 'plagl1_net'] }
+                    ]
+                },
+                t2_signal: {
+                    name: 'T2WI信号',
+                    icon: '📶',
+                    options: [
+                        { value: 'high', label: '高信号', tumors: ['glioblastoma', 'brain_metastases', 'ependymoma'] },
+                        { value: 'iso', label: '等信号', tumors: ['meningioma', 'pcnsl'] },
+                        { value: 'low', label: '低信号', tumors: ['medulloblastoma'] },
+                        { value: 'heterogeneous', label: '不均一', tumors: ['glioblastoma', 'plagl1_net'] }
+                    ]
+                },
+                special_findings: {
+                    name: '特殊所見',
+                    icon: '⭐',
+                    options: [
+                        { value: 'cystic_nodular', label: '嚢胞＋壁在結節', tumors: ['pilocytic_astrocytoma', 'plagl1_net'] },
+                        { value: 'dural_tail', label: 'Dural tail sign', tumors: ['meningioma'] },
+                        { value: 'hemorrhage', label: '出血成分', tumors: ['brain_metastases', 'glioblastoma'] },
+                        { value: 'calcification', label: '石灰化', tumors: ['meningioma', 'oligodendroglioma'] },
+                        { value: 'necrosis', label: '壊死', tumors: ['glioblastoma', 'brain_metastases'] },
+                        { value: 'edema_marked', label: '著明な浮腫', tumors: ['brain_metastases', 'glioblastoma'] },
+                        { value: 'multiple', label: '多発性', tumors: ['brain_metastases', 'pcnsl'] }
                     ]
                 }
             };
@@ -87,11 +386,13 @@
 
                 const sortedTumors = Object.entries(tumorCount)
                     .sort(([,a], [,b]) => b - a)
-                    .map(([tumor, count]) => ({
-                        name: tumor,
+                    .map(([tumorKey, count]) => ({
+                        key: tumorKey,
+                        data: tumorDatabase[tumorKey],
                         score: count,
                         percentage: Math.round((count / selectedValues.length) * 100)
-                    }));
+                    }))
+                    .filter(tumor => tumor.data);
 
                 setResults(sortedTumors);
             };
@@ -122,70 +423,100 @@
                 });
             };
 
+            const clearAllCriteria = () => {
+                setSelectedCriteria({});
+                setResults([]);
+            };
+
+            const filteredTumors = Object.entries(tumorDatabase).filter(([key, tumor]) =>
+                tumor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                tumor.keywords.some(keyword => keyword.toLowerCase().includes(searchTerm.toLowerCase()))
+            );
+
             return (
-                <div className="max-w-6xl mx-auto p-6 bg-white min-h-screen">
-                    <div className="mb-8">
-                        <h1 className="text-3xl font-bold text-gray-900 mb-4">
-                            脳腫瘍鑑別診断システム
+                <div className="max-w-7xl mx-auto p-4 bg-gray-50 min-h-screen">
+                    {/* ヘッダー */}
+                    <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+                        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                            🧠 放射線科読影用 脳腫瘍鑑別システム
                         </h1>
-                        <p className="text-gray-600 mb-6">
-                            年齢、部位、画像所見、症状などの基準を選択して、鑑別診断を絞り込みます。
+                        <p className="text-gray-600 mb-4">
+                            Radiopedia準拠 • WHO CNS5分類対応 • 分子診断情報included
                         </p>
+                        
+                        {/* 検索バー */}
+                        <div className="flex gap-4 items-center">
+                            <input
+                                type="text"
+                                placeholder="疾患名・キーワードで検索..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                            <button
+                                onClick={clearAllCriteria}
+                                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
+                            >
+                                リセット
+                            </button>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                         {/* 左側: 分類基準選択 */}
-                        <div className="space-y-4">
-                            <h2 className="text-xl font-semibold text-gray-900">分類基準選択</h2>
-                            
-                            {Object.entries(classificationData).map(([categoryKey, category]) => (
-                                <div key={categoryKey} className="border border-gray-200 rounded-lg">
-                                    <button
-                                        onClick={() => toggleSection(categoryKey)}
-                                        className="w-full px-4 py-3 text-left flex items-center justify-between bg-gray-50 hover:bg-gray-100 rounded-t-lg"
-                                    >
-                                        <span className="font-medium">{category.name}</span>
-                                        <span className="text-gray-500">
-                                            {expandedSections[categoryKey] ? '−' : '+'}
-                                        </span>
-                                    </button>
-                                    
-                                    {expandedSections[categoryKey] && (
-                                        <div className="p-4 space-y-2">
-                                            {category.options.map((option) => (
-                                                <button
-                                                    key={option.value}
-                                                    onClick={() => handleCriterionSelect(categoryKey, option)}
-                                                    className={`w-full text-left p-2 rounded border transition-colors ${
-                                                        selectedCriteria[categoryKey]?.value === option.value
-                                                            ? 'bg-blue-100 border-blue-500'
-                                                            : 'bg-white border-gray-200 hover:bg-gray-50'
-                                                    }`}
-                                                >
-                                                    {option.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                        <div className="xl:col-span-1 space-y-4">
+                            <div className="bg-white rounded-lg shadow-sm p-4">
+                                <h2 className="text-xl font-semibold text-gray-900 mb-4">📋 画像所見入力</h2>
+                                
+                                {Object.entries(classificationCriteria).map(([categoryKey, category]) => (
+                                    <div key={categoryKey} className="mb-4 border border-gray-200 rounded-lg">
+                                        <button
+                                            onClick={() => toggleSection(categoryKey)}
+                                            className="w-full px-4 py-3 text-left flex items-center justify-between bg-gray-50 hover:bg-gray-100 rounded-t-lg transition-colors"
+                                        >
+                                            <span className="font-medium flex items-center gap-2">
+                                                <span>{category.icon}</span>
+                                                {category.name}
+                                            </span>
+                                            <span className="text-gray-500">
+                                                {expandedSections[categoryKey] ? '−' : '+'}
+                                            </span>
+                                        </button>
+                                        
+                                        {expandedSections[categoryKey] && (
+                                            <div className="p-3 space-y-2 bg-white">
+                                                {category.options.map((option) => (
+                                                    <button
+                                                        key={option.value}
+                                                        onClick={() => handleCriterionSelect(categoryKey, option)}
+                                                        className={`w-full text-left p-2 rounded border transition-all ${
+                                                            selectedCriteria[categoryKey]?.value === option.value
+                                                                ? 'bg-blue-100 border-blue-500 font-medium'
+                                                                : 'bg-white border-gray-200 hover:bg-gray-50'
+                                                        }`}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
 
-                        {/* 右側: 選択された基準と結果 */}
-                        <div className="space-y-6">
                             {/* 選択された基準 */}
-                            <div>
-                                <h2 className="text-xl font-semibold text-gray-900 mb-4">選択された基準</h2>
+                            <div className="bg-white rounded-lg shadow-sm p-4">
+                                <h3 className="font-semibold text-gray-900 mb-3">✅ 選択された所見</h3>
                                 {Object.keys(selectedCriteria).length === 0 ? (
-                                    <p className="text-gray-500">基準を選択してください</p>
+                                    <p className="text-gray-500 text-sm">所見を選択してください</p>
                                 ) : (
                                     <div className="space-y-2">
                                         {Object.entries(selectedCriteria).map(([categoryKey, criterion]) => (
-                                            <div key={categoryKey} className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
-                                                <span className="font-medium">{criterion.label}</span>
+                                            <div key={categoryKey} className="flex items-center justify-between bg-blue-50 p-2 rounded">
+                                                <span className="text-sm font-medium">{criterion.label}</span>
                                                 <button
                                                     onClick={() => removeCriterion(categoryKey)}
-                                                    className="text-red-600 hover:text-red-800 text-lg font-bold"
+                                                    className="text-red-600 hover:text-red-800 font-bold"
                                                 >
                                                     ×
                                                 </button>
@@ -194,45 +525,163 @@
                                     </div>
                                 )}
                             </div>
+                        </div>
 
-                            {/* 鑑別診断結果 */}
-                            <div>
-                                <h2 className="text-xl font-semibold text-gray-900 mb-4">鑑別診断</h2>
+                        {/* 右側: 鑑別診断結果 */}
+                        <div className="xl:col-span-2 space-y-6">
+                            {/* 鑑別診断リスト */}
+                            <div className="bg-white rounded-lg shadow-sm p-6">
+                                <h2 className="text-xl font-semibold text-gray-900 mb-4">🎯 鑑別診断</h2>
                                 {results.length === 0 ? (
-                                    <p className="text-gray-500">基準を選択すると鑑別診断が表示されます</p>
+                                    <div className="text-center py-8">
+                                        <p className="text-gray-500 mb-4">画像所見を選択すると鑑別診断が表示されます</p>
+                                        <div className="text-sm text-gray-400">
+                                            💡 年齢・部位・造影パターンから始めることをお勧めします
+                                        </div>
+                                    </div>
                                 ) : (
                                     <div className="space-y-3">
-                                        {results.map((result, index) => (
-                                            <div key={index} className="flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 p-4 rounded-lg border">
-                                                <div>
-                                                    <h3 className="font-semibold text-gray-900">{result.name}</h3>
-                                                    <p className="text-sm text-gray-600">
-                                                        適合度: {result.score}/{Object.keys(selectedCriteria).length} ({result.percentage}%)
-                                                    </p>
-                                                </div>
-                                                <div className="text-right">
-                                                    <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
-                                                        #{index + 1}
-                                                    </span>
+                                        {results.slice(0, 5).map((result, index) => (
+                                            <div 
+                                                key={index} 
+                                                className="disease-card bg-gradient-to-r from-green-50 to-blue-50 p-4 rounded-lg border border-gray-200"
+                                                onClick={() => setSelectedDisease(result)}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex-1">
+                                                        <h3 className="font-bold text-gray-900 text-lg">{result.data.name}</h3>
+                                                        <p className="text-sm text-gray-600">{result.data.whoGrade} • {result.data.agePreference}</p>
+                                                        <p className="text-xs text-gray-500 mt-1">
+                                                            キーワード: {result.data.keywords.join(', ')}
+                                                        </p>
+                                                    </div>
+                                                    <div className="text-right ml-4">
+                                                        <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                                                            #{index + 1}
+                                                        </span>
+                                                        <p className="text-xs text-gray-600 mt-1">
+                                                            適合度 {result.percentage}%
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
                                 )}
                             </div>
+
+                            {/* 疾患詳細表示 */}
+                            {selectedDisease && (
+                                <div className="bg-white rounded-lg shadow-lg p-6 border-l-4 border-blue-500">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <h2 className="text-2xl font-bold text-gray-900">{selectedDisease.data.name}</h2>
+                                        <button
+                                            onClick={() => setSelectedDisease(null)}
+                                            className="text-gray-500 hover:text-gray-700 text-xl font-bold"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* 基礎知識 */}
+                                        <div>
+                                            <div className="section-header">✅ 基礎知識</div>
+                                            <ul className="space-y-2">
+                                                {selectedDisease.data.basics.map((item, index) => (
+                                                    <li key={index} className="text-sm text-gray-700 flex items-start">
+                                                        <span className="text-blue-500 mr-2">☑</span>
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+
+                                            <div className="section-header mt-4">📊 基本情報</div>
+                                            <div className="space-y-2 text-sm">
+                                                <div><span className="font-medium">WHO分類:</span> <span className="highlight">{selectedDisease.data.whoGrade}</span></div>
+                                                <div><span className="font-medium">好発年齢:</span> {selectedDisease.data.agePreference}</div>
+                                                <div><span className="font-medium">好発部位:</span> {selectedDisease.data.location}</div>
+                                                <div><span className="font-medium">予後:</span> {selectedDisease.data.prognosis}</div>
+                                            </div>
+                                        </div>
+
+                                        {/* 画像所見 */}
+                                        <div>
+                                            <div className="section-header">🔍 画像所見まとめ</div>
+                                            <ul className="space-y-2">
+                                                {selectedDisease.data.imaging.map((item, index) => (
+                                                    <li key={index} className="text-sm text-gray-700 flex items-start">
+                                                        <span className="text-green-500 mr-2">☑</span>
+                                                        <span>{item}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
+
+                                            <div className="section-header mt-4">🤔 主な鑑別診断</div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {selectedDisease.data.differentials.map((diff, index) => (
+                                                    <span key={index} className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs">
+                                                        {diff}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* 疾患データベース一覧（検索時）*/}
+                            {searchTerm && (
+                                <div className="bg-white rounded-lg shadow-sm p-6">
+                                    <h2 className="text-xl font-semibold text-gray-900 mb-4">
+                                        🔍 検索結果: "{searchTerm}"
+                                    </h2>
+                                    <div className="grid gap-4">
+                                        {filteredTumors.map(([key, tumor]) => (
+                                            <div 
+                                                key={key}
+                                                className="disease-card p-4 border border-gray-200 rounded-lg hover:border-blue-300"
+                                                onClick={() => setSelectedDisease({data: tumor, key})}
+                                            >
+                                                <h3 className="font-bold text-gray-900">{tumor.name}</h3>
+                                                <p className="text-sm text-gray-600">{tumor.whoGrade} • {tumor.agePreference}</p>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    📍 {tumor.location}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-yellow-800">
-                            <strong>医学的免責事項:</strong> このシステムは教育目的で作成されており、実際の診断に代わるものではありません。診断は必ず医療従事者が行ってください。
-                        </p>
+                    {/* フッター */}
+                    <div className="mt-8 bg-white rounded-lg shadow-sm p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                            <div>
+                                <h4 className="font-semibold text-gray-900 mb-2">📚 データソース</h4>
+                                <ul className="space-y-1">
+                                    <li>• Radiopedia.org</li>
+                                    <li>• WHO CNS5 Classification</li>
+                                    <li>• 分子診断ガイドライン</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-gray-900 mb-2">⚠️ 免責事項</h4>
+                                <p>本システムは教育目的であり、実際の診断には医師の総合的判断が必要です。</p>
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-gray-900 mb-2">🔄 更新情報</h4>
+                                <p>Version 2.0 - WHO CNS5対応<br/>分子診断情報追加</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             );
         };
 
-        ReactDOM.render(<BrainTumorClassifier />, document.getElementById('root'));
+        ReactDOM.render(<RadiologyTumorSystem />, document.getElementById('root'));
     </script>
 </body>
 </html>
