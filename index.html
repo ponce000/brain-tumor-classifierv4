@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>脳腫瘍鑑別診断システム</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const BrainTumorClassifier = () => {
+            const [selectedCriteria, setSelectedCriteria] = useState({});
+            const [results, setResults] = useState([]);
+            const [expandedSections, setExpandedSections] = useState({});
+
+            // 脳腫瘍分類データ
+            const classificationData = {
+                age: {
+                    name: '年齢分類',
+                    options: [
+                        { value: 'infant', label: '新生児・乳児 (0-2歳)', tumors: ['髄芽腫', '毛様細胞性星細胞腫', '非定型奇形腫様腫瘍'] },
+                        { value: 'child', label: '小児 (3-17歳)', tumors: ['髄芽腫', '毛様細胞性星細胞腫', '脳幹膠芽腫', '上衣腫'] },
+                        { value: 'adult', label: '成人 (18-65歳)', tumors: ['膠芽腫', '髄膜腫', '転移性腫瘍', '下垂体腺腫'] },
+                        { value: 'elderly', label: '高齢者 (65歳以上)', tumors: ['膠芽腫', '転移性腫瘍', '原発性CNSリンパ腫', '髄膜腫'] }
+                    ]
+                },
+                location: {
+                    name: '解剖学的部位',
+                    options: [
+                        { value: 'frontal', label: '前頭葉', tumors: ['膠芽腫', '乏突起膠腫', '転移性腫瘍'] },
+                        { value: 'temporal', label: '側頭葉', tumors: ['膠芽腫', '乏突起膠腫', '転移性腫瘍'] },
+                        { value: 'parietal', label: '頭頂葉', tumors: ['膠芽腫', '転移性腫瘍', '髄膜腫'] },
+                        { value: 'brainstem', label: '脳幹', tumors: ['脳幹膠芽腫', '血管芽腫'] },
+                        { value: 'cerebellum', label: '小脳', tumors: ['血管芽腫', '転移性腫瘍', '髄芽腫'] },
+                        { value: 'intraventricular', label: '脳室内', tumors: ['上衣腫', '中枢性神経細胞腫', '脈絡叢乳頭腫'] },
+                        { value: 'posterior_fossa', label: '後頭蓋窩', tumors: ['聴神経腫', '髄膜腫', '類上皮嚢胞'] },
+                        { value: 'sellar', label: '鞍上部・鞍内', tumors: ['下垂体腺腫', '頭蓋咽頭腫', 'ラトケ嚢胞'] }
+                    ]
+                },
+                imaging: {
+                    name: '画像所見',
+                    options: [
+                        { value: 'uniform_enhancement', label: '均一造影', tumors: ['髄膜腫', '神経鞘腫', '下垂体腺腫'] },
+                        { value: 'ring_enhancement', label: 'リング状造影', tumors: ['膠芽腫', '転移性腫瘍'] },
+                        { value: 'restricted_diffusion', label: '拡散制限あり', tumors: ['髄芽腫', '原発性CNSリンパ腫'] },
+                        { value: 'hemorrhage', label: '出血あり', tumors: ['転移性腫瘍（腎癌、悪性黒色腫）', '膠芽腫'] },
+                        { value: 'calcification', label: '石灰化あり', tumors: ['乏突起膠腫', '髄膜腫', '頭蓋咽頭腫'] }
+                    ]
+                },
+                symptoms: {
+                    name: '臨床症状',
+                    options: [
+                        { value: 'increased_icp', label: '頭蓋内圧亢進症状', tumors: ['水頭症を伴う腫瘍', '大きな腫瘍'] },
+                        { value: 'seizure', label: '痙攣', tumors: ['大脳皮質の腫瘍', '膠芽腫'] },
+                        { value: 'endocrine', label: '内分泌症状', tumors: ['下垂体腺腫', '頭蓋咽頭腫'] },
+                        { value: 'asymptomatic', label: '無症状', tumors: ['髄膜腫', '小さな腫瘍'] }
+                    ]
+                }
+            };
+
+            // 鑑別診断の計算
+            const calculateDifferentials = () => {
+                const selectedValues = Object.values(selectedCriteria);
+                if (selectedValues.length === 0) {
+                    setResults([]);
+                    return;
+                }
+
+                const tumorCount = {};
+                selectedValues.forEach(criterion => {
+                    if (criterion && criterion.tumors) {
+                        criterion.tumors.forEach(tumor => {
+                            tumorCount[tumor] = (tumorCount[tumor] || 0) + 1;
+                        });
+                    }
+                });
+
+                const sortedTumors = Object.entries(tumorCount)
+                    .sort(([,a], [,b]) => b - a)
+                    .map(([tumor, count]) => ({
+                        name: tumor,
+                        score: count,
+                        percentage: Math.round((count / selectedValues.length) * 100)
+                    }));
+
+                setResults(sortedTumors);
+            };
+
+            useEffect(() => {
+                calculateDifferentials();
+            }, [selectedCriteria]);
+
+            const toggleSection = (sectionKey) => {
+                setExpandedSections(prev => ({
+                    ...prev,
+                    [sectionKey]: !prev[sectionKey]
+                }));
+            };
+
+            const handleCriterionSelect = (category, option) => {
+                setSelectedCriteria(prev => ({
+                    ...prev,
+                    [category]: option
+                }));
+            };
+
+            const removeCriterion = (category) => {
+                setSelectedCriteria(prev => {
+                    const newCriteria = { ...prev };
+                    delete newCriteria[category];
+                    return newCriteria;
+                });
+            };
+
+            return (
+                <div className="max-w-6xl mx-auto p-6 bg-white min-h-screen">
+                    <div className="mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900 mb-4">
+                            脳腫瘍鑑別診断システム
+                        </h1>
+                        <p className="text-gray-600 mb-6">
+                            年齢、部位、画像所見、症状などの基準を選択して、鑑別診断を絞り込みます。
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* 左側: 分類基準選択 */}
+                        <div className="space-y-4">
+                            <h2 className="text-xl font-semibold text-gray-900">分類基準選択</h2>
+                            
+                            {Object.entries(classificationData).map(([categoryKey, category]) => (
+                                <div key={categoryKey} className="border border-gray-200 rounded-lg">
+                                    <button
+                                        onClick={() => toggleSection(categoryKey)}
+                                        className="w-full px-4 py-3 text-left flex items-center justify-between bg-gray-50 hover:bg-gray-100 rounded-t-lg"
+                                    >
+                                        <span className="font-medium">{category.name}</span>
+                                        <span className="text-gray-500">
+                                            {expandedSections[categoryKey] ? '−' : '+'}
+                                        </span>
+                                    </button>
+                                    
+                                    {expandedSections[categoryKey] && (
+                                        <div className="p-4 space-y-2">
+                                            {category.options.map((option) => (
+                                                <button
+                                                    key={option.value}
+                                                    onClick={() => handleCriterionSelect(categoryKey, option)}
+                                                    className={`w-full text-left p-2 rounded border transition-colors ${
+                                                        selectedCriteria[categoryKey]?.value === option.value
+                                                            ? 'bg-blue-100 border-blue-500'
+                                                            : 'bg-white border-gray-200 hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    {option.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* 右側: 選択された基準と結果 */}
+                        <div className="space-y-6">
+                            {/* 選択された基準 */}
+                            <div>
+                                <h2 className="text-xl font-semibold text-gray-900 mb-4">選択された基準</h2>
+                                {Object.keys(selectedCriteria).length === 0 ? (
+                                    <p className="text-gray-500">基準を選択してください</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {Object.entries(selectedCriteria).map(([categoryKey, criterion]) => (
+                                            <div key={categoryKey} className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
+                                                <span className="font-medium">{criterion.label}</span>
+                                                <button
+                                                    onClick={() => removeCriterion(categoryKey)}
+                                                    className="text-red-600 hover:text-red-800 text-lg font-bold"
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 鑑別診断結果 */}
+                            <div>
+                                <h2 className="text-xl font-semibold text-gray-900 mb-4">鑑別診断</h2>
+                                {results.length === 0 ? (
+                                    <p className="text-gray-500">基準を選択すると鑑別診断が表示されます</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {results.map((result, index) => (
+                                            <div key={index} className="flex items-center justify-between bg-gradient-to-r from-green-50 to-blue-50 p-4 rounded-lg border">
+                                                <div>
+                                                    <h3 className="font-semibold text-gray-900">{result.name}</h3>
+                                                    <p className="text-sm text-gray-600">
+                                                        適合度: {result.score}/{Object.keys(selectedCriteria).length} ({result.percentage}%)
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="inline-block bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                                                        #{index + 1}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="mt-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p className="text-sm text-yellow-800">
+                            <strong>医学的免責事項:</strong> このシステムは教育目的で作成されており、実際の診断に代わるものではありません。診断は必ず医療従事者が行ってください。
+                        </p>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<BrainTumorClassifier />, document.getElementById('root'));
+    </script>
+</body>
+</html>
